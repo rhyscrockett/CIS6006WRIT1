@@ -1,4 +1,9 @@
 import sqlite3 as sql
+import random # generate unique ID
+import os # generate key
+import json # store the student credentials
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='natural-bison-345312-7f7a1bd41916.json'
 
 def app_menu():
     menu = {} # dictionary to hold selection with button
@@ -27,8 +32,8 @@ def add_record():
     print("add: success")
     user_application_form()
     # TODO (1) appropriate password-less authentication to gain access to app
-    # TODO (2) a form that a user attaches credentials and submits -> user managment table
-    # TODO (3) after submitting form, app generates an encryption key and unique ID
+    # TODO (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE) TICK?
+    # TODO (3) after submitting form, app generates an encryption key and unique ID PARTIAL TICK
     # TODO (4) display uniqiue ID and use either block/stream cipher to encrypt the file (credential(s)) and thus generate ciphertext
     # TODO (5) generate hash values of the ciphertext and unique ID
     # TODO (6) store the ciphertext in a cloud storage bucket
@@ -51,30 +56,55 @@ def user_application_form():
     credentials = {}
     credentials['first_name'] = input("What is your first name? ")
     credentials['last_name'] = input("What is your last name? ")
-    credentials['email'] = input("What is your email addres? ")
+    credentials['email'] = input("What is your email address? ")
     creds = credentials.keys()
     for i in creds:
-        print(f"{i}: {credentials[i]}")
+        print(f"{i.title()}: {credentials[i]}")
+    rand = [random.randint(0, 9) for i in range(8)]
+    gen_id = "st" + ''.join(map(str, rand))
 
-    import random
-    gen_id = [random.randint(0, 9) for i in range(8)]
-    id = "st" + ''.join(map(str, gen_id))
+    # Alternative ID generator
+    #import uuid
+    #gen_id2 = uuid.uuid4()
+    #print(gen_id2)
 
     while True:
-        submit = input("Check your details are correct and then press 's' to submit. Otherwise press 'e' to exit: ").lower().strip()
+        submit = input("Check your details are correct and (s)ubmit. Alternatively, (e)xit: ").lower().strip()
         if submit == 's':
-            import json
-            filename = open(id+".json", "w")
-            json.dump(credentials, filename)
-            filename.close()
+            # Write the json file
+            with open(gen_id+".json", "w") as write_file:
+                json.dump(credentials, write_file)
             break
         elif submit == 'e':
             break
         else:
             print("Invalid Selection!")
 
-    print("Unique ID: ",id, "(Do not lose this!)")
-    
+    print("Unique ID: ", gen_id, "(Do not lose this!)")
+    from cryptography.fernet import Fernet
+    key = Fernet.generate_key()
+    print("Generated Key: ", key)
+    f = Fernet(key)
+
+    # load file 
+    with open(gen_id+".json", "rb") as read_file:
+        file_data = read_file.read()
+        
+    encrypted_data = f.encrypt(file_data) # encrypt the credentials
+
+    print("Ciphertext>>>", encrypted_data) # ciphertext
+
+    # hashing
+    import hashlib, binascii
+    text = 'hello'
+    data = text.encode("utf-8")
+    sha256hash = hashlib.sha256(data).digest()
+    print("SHA-256: ", binascii.hexlify(sha256hash))
+
+    # write the encrypted data back to the same json file
+    with open(gen_id+".json", "wb") as encrypt_file:
+        encrypt_file.write(encrypted_data)
+
 def user_managment_table():
     con = sql.connect("database") # create a database
     c = con.cursor() # control the db
