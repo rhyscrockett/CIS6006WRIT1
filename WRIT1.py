@@ -58,8 +58,7 @@ def user_application_form():
 
     import random
     gen_id = [random.randint(0, 9) for i in range(8)]
-    id = ''.join(map(str, gen_id))
-    id = ("st") + id
+    id = "st" + ''.join(map(str, gen_id))
 
     while True:
         submit = input("Check your details are correct and then press 's' to submit. Otherwise press 'e' to exit: ").lower().strip()
