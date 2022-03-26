@@ -40,9 +40,9 @@ def view_record():
     # TODO (4) app retrieves the ciphertext from the cloud storage bucket IF THE HASH VALUE MATCH
     # TODO (5) retrieves the encryption key associated with this unique ID
     # TODO (6) decrypts the ciphertext
-    # TODO (7) performs file checksum and IF TRUE/
-    # TODO provides the file/record for viewing/downloading/
-    # TODO else file/record is corrupt and cannot be displayed/downloaded
+    # TODO (7) performs file checksum and IF TRUE /
+    # provides the file/record for viewing/downloading /
+    # else file/record is corrupt and cannot be displayed/downloaded
 
 def main():
     app_menu() # start menu
