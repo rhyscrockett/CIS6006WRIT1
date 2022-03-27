@@ -32,12 +32,12 @@ def add_record():
     print("add: success")
     user_application_form()
     # TODO (1) appropriate password-less authentication to gain access to app
-    # TODO (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE) TICK?
-    # TODO (3) after submitting form, app generates an encryption key and unique ID PARTIAL TICK
-    # TODO (4) display uniqiue ID and use either block/stream cipher to encrypt the file (credential(s)) and thus generate ciphertext
-    # TODO (5) generate hash values of the ciphertext and unique ID
+    # DONE - see brackets (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE)
+    # DONE (3) after submitting form, app generates an encryption key and unique ID
+    # DONE (4) display uniqiue ID and use either block/stream cipher to encrypt the file (credential(s)) and thus generate ciphertext
+    # DONE (see below) (5) generate hash values of the ciphertext and unique ID
     # TODO (6) store the ciphertext in a cloud storage bucket
-    # TODO (7) save the encryption key and hash value in a premised table -> user management table
+    # TODO (7) save the encryption key and hash values in a premised table -> user management table
 
 def view_record():
     print("view: success")
@@ -94,16 +94,36 @@ def user_application_form():
 
     print("Ciphertext>>>", encrypted_data) # ciphertext
 
-    # hashing
-    import hashlib, binascii
-    text = 'hello'
-    data = text.encode("utf-8")
-    sha256hash = hashlib.sha256(data).digest()
-    print("SHA-256: ", binascii.hexlify(sha256hash))
-
     # write the encrypted data back to the same json file
     with open(gen_id+".json", "wb") as encrypt_file:
         encrypt_file.write(encrypted_data)
+
+    # hashing example
+    import hashlib
+    #import binascii
+    #text = 'hello'
+    #data = text.encode("utf-8")
+    #sha256hash = hashlib.sha256(data).digest()
+    #print("SHA-256: ", binascii.hexlify(sha256hash))
+
+    # Generate Hash Values
+
+    # one hash value
+    dk = hashlib.sha256()
+    unique_id = gen_id.encode('utf-8') # convert to bytes
+    dk.update(encrypted_data) # already bytes
+    dk.update(unique_id)
+    print("Generated Hash (both ID and encrypted data): ", dk.hexdigest())
+
+    # two hash values
+    cipher_hash = hashlib.sha256()
+    id_hash = hashlib.sha256()
+    cipher_hash.update(encrypted_data)
+    id_hash.update(gen_id.encode("utf-8"))
+    print("Ciphertext hash: ", cipher_hash.hexdigest())
+    print("ID hash: ", id_hash.hexdigest())
+
+    
 
 def user_managment_table():
     con = sql.connect("database") # create a database
