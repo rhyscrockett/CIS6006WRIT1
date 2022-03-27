@@ -39,8 +39,29 @@ def add_record():
 
 def view_record():
     print("view: success")
-    # TODO (1) user enters their unique ID
-    # TODO (2) request to view/download/retrieve file
+    user_id = input("Enter your unique ID to continue: ")
+    # do checks on student id here
+    request = {}
+    request['1'] = "Retrieve/download file: "
+    request['2'] = "Exit: "
+    while True:
+        options = request.keys() # return the keys from menu dictionary
+        for entry in options:
+            print(entry, request[entry]) # print number alongside the text
+
+        # allow user input for selecting the menu
+        selection = input("Please select: ")
+        if selection == '1':
+            print("Start Process")
+            break
+        elif selection == '2':
+            print("End Process")
+            break
+        else:
+            print("Invalid Selection!")
+            
+    # DONE (1) user enters their unique ID
+    # DONE (2) request to view/download/retrieve file
     # TODO (3) retrieves the hash values of unique ID from premised table  -> user managment table
     # TODO (4) app retrieves the ciphertext from the cloud storage bucket IF THE HASH VALUE MATCH
     # TODO (5) retrieves the encryption key associated with this unique ID
@@ -180,7 +201,6 @@ def user_managment_table():
     con.commit() # save table
     
 def main():
-    aws_cloud_storage()
     #user_application_form()
     user_managment_table() # database
     app_menu() # start menu
