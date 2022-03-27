@@ -3,8 +3,6 @@ import random # generate unique ID
 import os # generate key
 import json # store the student credentials
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='natural-bison-345312-7f7a1bd41916.json'
-
 def app_menu():
     menu = {} # dictionary to hold selection with button
     menu['1'] = "Add Student Record: " # string 1 returns add student rec
@@ -36,7 +34,7 @@ def add_record():
     # DONE (3) after submitting form, app generates an encryption key and unique ID
     # DONE (4) display uniqiue ID and use either block/stream cipher to encrypt the file (credential(s)) and thus generate ciphertext
     # DONE (see below) (5) generate hash values of the ciphertext and unique ID
-    # TODO (6) store the ciphertext in a cloud storage bucket
+    # DONE (6) store the ciphertext in a cloud storage bucket
     # TODO (7) save the encryption key and hash values in a premised table -> user management table
 
 def view_record():
@@ -123,7 +121,42 @@ def user_application_form():
     print("Ciphertext hash: ", cipher_hash.hexdigest())
     print("ID hash: ", id_hash.hexdigest())
 
-    
+    ### aws_cloud_storage
+    import boto3
+
+    # create an S3 client
+    s3 = boto3.client("s3")
+
+    # Create a bucket called 'cis6006-storage
+    s3.create_bucket(Bucket='cis6006-storage')
+
+    # Call S3 to list current buckets
+    response = s3.list_buckets()
+
+    # Get a list of all bucket names from the response
+    buckets = [bucket['Name'] for bucket in response['Buckets']]
+
+    # Print out the bucket list
+    print("Bucket List: ", buckets)
+
+    filename = gen_id+".json"
+    bucket_name = 'cis6006-storage'
+
+    # Uploads the given file using a managed uploader, which will split
+    # up large parts automatically and upload parts in parallel
+    #s3.upload_file(filename, bucket_name, filename)
+
+    # prints all objects (files) in bucket
+    s3_resource = boto3.resource("s3")
+    s3_bucket = s3_resource.Bucket(bucket_name)
+    for obj in s3_bucket.objects.all():
+        print(f"-- {obj.key}")
+
+    # delete objects from bucket
+    s3_bucket.objects.filter(Prefix='st83590683.json').delete()
+
+def aws_cloud_storage():
+    """Creates default Bucket for AWS to use."""
 
 def user_managment_table():
     con = sql.connect("database") # create a database
@@ -147,6 +180,7 @@ def user_managment_table():
     con.commit() # save table
     
 def main():
+    aws_cloud_storage()
     #user_application_form()
     user_managment_table() # database
     app_menu() # start menu
