@@ -2,6 +2,7 @@ import sqlite3 as sql
 import random # generate unique ID
 import os # generate key
 import json # store the student credentials
+import sys
 
 def app_menu():
     menu = {} # dictionary to hold selection with button
@@ -27,8 +28,11 @@ def app_menu():
             print("Invalid Selection!")
 
 def add_record():
-    print("add: success")
-    user_application_form()
+    print("add: success") # test
+    g = user_application_form() # run the user_application_form function and save the generated ID as g when successful
+    f = generate_encryption_key() # run the generate_encryption_key function and save the generated key as f
+    encryption(g, f) # perform the encryption using the credentials (reading them from dir using ID) from user_application_form and the generated key from generate_encryption_key
+    
     # TODO (1) appropriate password-less authentication to gain access to app
     # DONE - see brackets (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE)
     # DONE (3) after submitting form, app generates an encryption key and unique ID
@@ -82,7 +86,17 @@ def generate_id():
 
     return gen_id
 
+def generate_encryption_key():
+    """Generate an encryption key using the cryptography library (Fernet - an AES CBC MODE based cipher)."""
+    from cryptography.fernet import Fernet
+    key = Fernet.generate_key()
+    print("Generated Key: ", key)
+    f = Fernet(key)
+
+    return f
+
 def user_application_form():
+    """A simple dictionary to hold a temporary form for the user to register. This form will be encrypted and stored in the cloud"""
     print("Please complete the form and submit to register:")
     credentials = {}
     credentials['first_name'] = input("What is your first name? ")
@@ -97,33 +111,38 @@ def user_application_form():
     while True:
         submit = input("Check your details are correct and (s)ubmit. Alternatively, (e)xit: ").lower().strip()
         if submit == 's':
+            unique_id = generate_id() # generate a unique id
             # Write the json file
-            gen_id = generate_id() # generate ID
-            with open(gen_id+".json", "w") as write_file:
+            with open(unique_id+".json", "w") as write_file:
                 json.dump(credentials, write_file) # save the credentials to a JSON file with the ID num as name
             break
         elif submit == 'e':
-            break
+            print("Exiting...")
+            sys.exit(1)
         else:
             print("Invalid Selection!")
+    print("Unique ID: ", unique_id, "(Do not lose this!)")
 
-    print("Unique ID: ", gen_id, "(Do not lose this!)")
-    from cryptography.fernet import Fernet
-    key = Fernet.generate_key()
-    print("Generated Key: ", key)
-    f = Fernet(key)
+    return unique_id
 
-    # load file 
-    with open(gen_id+".json", "rb") as read_file:
-        file_data = read_file.read()
+def encryption(unique_id, f):
+    #f = generate_encryption_key() # call the encryption key generation function (NOT NEEDED HERE - SEE generate_encryption_key)
+
+    # load file to bytes in order to encrypt data
+    with open(unique_id+".json", "rb") as read_file:
+        file_data = read_file.read() # read the file to file_data
         
-    encrypted_data = f.encrypt(file_data) # encrypt the credentials
+    encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
 
-    print("Ciphertext>>>", encrypted_data) # ciphertext
+    print("Ciphertext>>>", encrypted_data) # print ciphertext
 
     # write the encrypted data back to the same json file
-    with open(gen_id+".json", "wb") as encrypt_file:
-        encrypt_file.write(encrypted_data)
+    with open(unique_id+".json", "wb") as encrypt_file:
+        encrypt_file.write(encrypted_data) # save the encrypted data as bytes back to the same file
+
+    filename = unique_id+".json"
+
+    return filename
 
     # hashing example
     import hashlib
@@ -209,7 +228,6 @@ def user_managment_table():
     con.commit() # save table
     
 def main():
-    #user_application_form()
     user_managment_table() # database
     app_menu() # start menu
     
