@@ -29,9 +29,11 @@ def app_menu():
 
 def add_record():
     print("add: success") # test
-    g = user_application_form() # run the user_application_form function and save the generated ID as g when successful
+    i = user_application_form() # run the user_application_form function and save the generated ID as g when successful
     f = generate_encryption_key() # run the generate_encryption_key function and save the generated key as f
-    encryption(g, f) # perform the encryption using the credentials (reading them from dir using ID) from user_application_form and the generated key from generate_encryption_key
+    ct = encryption(i, f) # perform the encryption using the credentials (reading them from dir using ID) from user_application_form and the generated key from generate_encryption_key
+    hashing(i, ct) # perform hashing for both the ciphertext and the unique ID
+    aws_cloud_storage_upload(i, ct) # upload the encrypted credentials to the cloud using the unique ID as the filename
     
     # TODO (1) appropriate password-less authentication to gain access to app
     # DONE - see brackets (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE)
@@ -105,8 +107,6 @@ def user_application_form():
     creds = credentials.keys()
     for i in creds:
         print(f"{i.title()}: {credentials[i]}")
-    #rand = [random.randint(0, 9) for i in range(8)]
-    #gen_id = "st" + ''.join(map(str, rand))
 
     while True:
         submit = input("Check your details are correct and (s)ubmit. Alternatively, (e)xit: ").lower().strip()
@@ -137,38 +137,32 @@ def encryption(unique_id, f):
     print("Ciphertext>>>", encrypted_data) # print ciphertext
 
     # write the encrypted data back to the same json file
-    with open(unique_id+".json", "wb") as encrypt_file:
-        encrypt_file.write(encrypted_data) # save the encrypted data as bytes back to the same file
+    #with open(unique_id+".json", "wb") as encrypt_file:
+    #    encrypt_file.write(encrypted_data) # save the encrypted data as bytes back to the same file
 
-    filename = unique_id+".json"
+    return encrypted_data
 
-    return filename
-
-    # hashing example
+def hashing(encrypted_data, unique_id):
     import hashlib
-    #import binascii
-    #text = 'hello'
-    #data = text.encode("utf-8")
-    #sha256hash = hashlib.sha256(data).digest()
-    #print("SHA-256: ", binascii.hexlify(sha256hash))
 
-    # Generate Hash Values
+    cipher_hash = hashlib.sha256() # create hash for ciphertext
+    id_hash = hashlib.sha256() # create hash for unique ID
+    cipher_hash.update(encrypted_data.encode("utf-8")) # update the cipher hash to include ciphertext
+    id_hash.update(unique_id) # update id hash to include the unique id
+    print("Ciphertext Hash: ", cipher_hash.hexdigest()) # print cipher hash
+    print("ID Hash: ", id_hash.hexdigest()) # print the ID hash
+
+    return cipher_hash, id_hash
 
     # one hash value
-    dk = hashlib.sha256()
-    unique_id = gen_id.encode('utf-8') # convert to bytes
-    dk.update(encrypted_data) # already bytes
-    dk.update(unique_id)
-    print("Generated Hash (both ID and encrypted data): ", dk.hexdigest())
+    #dk = hashlib.sha256()
+    #unique_id = gen_id.encode('utf-8') # convert to bytes
+    #dk.update(encrypted_data) # already bytes
+    #dk.update(unique_id)
+    #print("Generated Hash (both ID and encrypted data): ", dk.hexdigest())
 
-    # two hash values
-    cipher_hash = hashlib.sha256()
-    id_hash = hashlib.sha256()
-    cipher_hash.update(encrypted_data)
-    id_hash.update(gen_id.encode("utf-8"))
-    print("Ciphertext hash: ", cipher_hash.hexdigest())
-    print("ID hash: ", id_hash.hexdigest())
-
+def aws_cloud_storage_upload(filename, encrypted_data):
+    """Creates default Bucket for AWS to use."""
     ### aws_cloud_storage
     import boto3
 
@@ -187,12 +181,17 @@ def encryption(unique_id, f):
     # Print out the bucket list
     print("Bucket List: ", buckets)
 
-    filename = gen_id+".json"
+    filename_id = filename+".json"
+
+    #write the encrypted data back to the same json file
+    with open(filename_id, "wb") as encrypt_file:
+        encrypt_file.write(encrypted_data)
+
     bucket_name = 'cis6006-storage'
 
     # Uploads the given file using a managed uploader, which will split
     # up large parts automatically and upload parts in parallel
-    #s3.upload_file(filename, bucket_name, filename)
+    #s3.upload_file(filename_id, bucket_name, filename_id) (UNCOMMENT TO UPLOAD FILES)
 
     # prints all objects (files) in bucket
     s3_resource = boto3.resource("s3")
@@ -201,23 +200,11 @@ def encryption(unique_id, f):
         print(f"-- {obj.key}")
 
     # delete objects from bucket
-    s3_bucket.objects.filter(Prefix='st83590683.json').delete()
+    #s3_bucket.objects.filter(Prefix='st17010024.json').delete() (UNCOMMENT AND ADJUST PREFIX TO DELETE)
 
-def aws_cloud_storage():
-    """Creates default Bucket for AWS to use."""
-
-def user_managment_table():
-    con = sql.connect("database") # create a database
+def user_managment_table(cipher_hash, id_hash):
+    con = sql.connect("premised_table") # create a database
     c = con.cursor() # control the db
-
-    #c.execute("""
-    #CREATE TABLE IF NOT EXISTS students
-    #([student_id] INTEGER PRIMARY KEY, [first_name] TEXT,
-    #[last_name] TEXT, [email] VARCHAR)
-    #""")
-
-    #c.execute("""
-    #INSERT INTO students (name,
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS keys
@@ -225,10 +212,11 @@ def user_managment_table():
     [hash_values] TEXT)
     """)
 
+    
     con.commit() # save table
     
 def main():
-    user_managment_table() # database
+    #user_managment_table() # database
     app_menu() # start menu
     
     # TODO needed SQL "on premise" user access management table
