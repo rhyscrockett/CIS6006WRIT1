@@ -70,6 +70,18 @@ def view_record():
     # provides the file/record for viewing/downloading /
     # else file/record is corrupt and cannot be displayed/downloaded
 
+def generate_id():
+    """Generates a unique ID to be used by a student."""
+    rand = [random.randint(0, 9) for i in range(8)] # generate 8 random numbers (0, 9)
+    gen_id = "st" + ''.join(map(str, rand)) # append st to the start, creating st(8 random nums)
+
+    # Alternative ID generator
+    #import uuid
+    #gen_id2 = uuid.uuid4()
+    #print(gen_id2)
+
+    return gen_id
+
 def user_application_form():
     print("Please complete the form and submit to register:")
     credentials = {}
@@ -79,20 +91,16 @@ def user_application_form():
     creds = credentials.keys()
     for i in creds:
         print(f"{i.title()}: {credentials[i]}")
-    rand = [random.randint(0, 9) for i in range(8)]
-    gen_id = "st" + ''.join(map(str, rand))
-
-    # Alternative ID generator
-    #import uuid
-    #gen_id2 = uuid.uuid4()
-    #print(gen_id2)
+    #rand = [random.randint(0, 9) for i in range(8)]
+    #gen_id = "st" + ''.join(map(str, rand))
 
     while True:
         submit = input("Check your details are correct and (s)ubmit. Alternatively, (e)xit: ").lower().strip()
         if submit == 's':
             # Write the json file
+            gen_id = generate_id() # generate ID
             with open(gen_id+".json", "w") as write_file:
-                json.dump(credentials, write_file)
+                json.dump(credentials, write_file) # save the credentials to a JSON file with the ID num as name
             break
         elif submit == 'e':
             break
