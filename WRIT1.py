@@ -3,6 +3,7 @@ import random # generate unique ID
 import os # generate key
 import json # store the student credentials
 import sys
+from cryptography.fernet import Fernet
 
 def app_menu():
     menu = {} # dictionary to hold selection with button
@@ -30,18 +31,19 @@ def app_menu():
 def add_record():
     print("add: success") # test
     i = user_application_form() # run the user_application_form function and save the generated ID as g when successful
-    f = generate_encryption_key() # run the generate_encryption_key function and save the generated key as f
-    ct = encryption(i, f) # perform the encryption using the credentials (reading them from dir using ID) from user_application_form and the generated key from generate_encryption_key
-    hashing(i, ct) # perform hashing for both the ciphertext and the unique ID
+    k = generate_encryption_key() # run the generate_encryption_key function and save the generated key as f
+    ct = encryption(i, k) # perform the encryption using the credentials (reading them from dir using ID) from user_application_form and the generated key from generate_encryption_key
+    c_hash, id_hash= hashing(i, ct) # perform hashing for both the ciphertext and the unique ID
     aws_cloud_storage_upload(i, ct) # upload the encrypted credentials to the cloud using the unique ID as the filename
+    user_managment_table(i, k, c_hash, id_hash) # database
     
     # TODO (1) appropriate password-less authentication to gain access to app
     # DONE - see brackets (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE)
     # DONE (3) after submitting form, app generates an encryption key and unique ID
     # DONE (4) display uniqiue ID and use either block/stream cipher to encrypt the file (credential(s)) and thus generate ciphertext
-    # DONE (see below) (5) generate hash values of the ciphertext and unique ID
+    # DONE (5) generate hash values of the ciphertext and unique ID
     # DONE (6) store the ciphertext in a cloud storage bucket
-    # TODO (7) save the encryption key and hash values in a premised table -> user management table
+    # DONE (7) save the encryption key and hash values in a premised table -> user management table
 
 def view_record():
     print("view: success")
@@ -90,12 +92,10 @@ def generate_id():
 
 def generate_encryption_key():
     """Generate an encryption key using the cryptography library (Fernet - an AES CBC MODE based cipher)."""
-    from cryptography.fernet import Fernet
     key = Fernet.generate_key()
     print("Generated Key: ", key)
-    f = Fernet(key)
 
-    return f
+    return key
 
 def user_application_form():
     """A simple dictionary to hold a temporary form for the user to register. This form will be encrypted and stored in the cloud"""
@@ -125,12 +125,14 @@ def user_application_form():
 
     return unique_id
 
-def encryption(unique_id, f):
+def encryption(unique_id, key):
     #f = generate_encryption_key() # call the encryption key generation function (NOT NEEDED HERE - SEE generate_encryption_key)
 
     # load file to bytes in order to encrypt data
     with open(unique_id+".json", "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
+
+    f = Fernet(key)
         
     encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
 
@@ -202,21 +204,41 @@ def aws_cloud_storage_upload(filename, encrypted_data):
     # delete objects from bucket
     #s3_bucket.objects.filter(Prefix='st17010024.json').delete() (UNCOMMENT AND ADJUST PREFIX TO DELETE)
 
-def user_managment_table(cipher_hash, id_hash):
-    con = sql.connect("premised_table") # create a database
-    c = con.cursor() # control the db
+def user_managment_table(unique_id, encryption_key, cipher_hash, id_hash):
+    connection = sql.connect("premised_table.db") # create a database
+    c = connection.cursor() # control the db
+    print("\nConnected to premised_table\n") # confirmation message
 
+    # command to create database
     c.execute("""
     CREATE TABLE IF NOT EXISTS keys
-    ([unique_id] INTEGER PRIMARY KEY, [encryption_key] TEXT,
-    [hash_values] TEXT)
+    ([unique_id] TEXT PRIMARY KEY, [encryption_key] TEXT, [cipher_hash] TEXT, [id_hash] TEXT)
     """)
 
+    # command to insert into database
+    c.execute("""
+    INSERT INTO keys (unique_id, encryption_key, cipher_hash, id_hash) VALUES (?, ?, ?, ?);
+    """, (unique_id, encryption_key.decode(), cipher_hash.hexdigest(), id_hash.hexdigest()))
+
+
+    ### these values are needed
+    #print(id_hash.hexdigest())
+    #print(unique_id)
+    #print(cipher_hash.hexdigest())
+    #print(encryption_key.decode())
+
+    ## loop to print all
+    c.execute("SELECT * FROM keys")
+    records = c.fetchall()
+    for row in records:
+        print(row)
     
-    con.commit() # save table
+    connection.commit() # save table
+    print("\nPython Variables passed from parameters inserted successfully into sqlite\n") # success print
+
+    c.close() # close database (memory managment)
     
 def main():
-    #user_managment_table() # database
     app_menu() # start menu
     
     # TODO needed SQL "on premise" user access management table
