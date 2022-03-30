@@ -63,7 +63,7 @@ def view_record():
         selection = input("Please select: ")
         if selection == '1':
             print("Start Process")
-            unique_id = id_check(user_id)
+            check = credential_check(user_id)
             break
         elif selection == '2':
             print("End Process")
@@ -81,22 +81,41 @@ def view_record():
     # provides the file/record for viewing/downloading /
     # else file/record is corrupt and cannot be displayed/downloaded
 
-def id_check(unique_id):
+def credential_check(unique_id):
     user_hash = hashlib.sha256() # create hash of the entered ID to check if the matcing hash is found
     user_hash.update(unique_id.encode('utf-8')) # string needs to be encoded before hashing
-    print("ID Hash: ", user_hash.hexdigest()) # simple print of id
+    print("Unique ID Hash: ", user_hash.hexdigest())
 
     connection = sql.connect("premised_table.db") # create a database
     c = connection.cursor() # control the db
     print("\nConnected to premised_table\n") # confirmation message
 
-    search = user_hash.hexdigest() # create a parameter to seach for the matching hash
-    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [search]) # search
+    search_id = user_hash.hexdigest() # create a parameter to seach for the matching hash
+    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [search_id]) # search
     if results is None:
         print("User does not exist")
+        sys.exit(1)
     else:
-        print("Congratulations")
+        filename = unique_id+".json"
+        s3 = boto3.client("s3")
+        s3.download_file('cis6006-storage', filename, filename)
+        print("Success")
 
+    with open(unique_id+".json", "rb") as read_file:
+        file_data = read_file.read() # read the file to file_data
+
+    user_hash = hashlib.sha256() # redefine above variable to check ciphertext hash
+    user_hash.update(file_data) # update the user_hash to use the file_data instead
+    print("Ciphertext Hash: ", user_hash.hexdigest()) # print hash
+
+    search_ct = user_hash.hexdigest() # get str of user_hash
+    results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [search_ct]) # search for matching hash
+    if results is None:
+        print("Error recovering credentials") # if not matching hash is found, error is found
+        sys.exit(1) # exit system
+    else:
+        print("Success") # else hash is found for ciphertext, continue with decryption
+        
 def generate_id():
     """Generates a unique ID to be used by a student."""
     rand = [random.randint(0, 9) for i in range(8)] # generate 8 random numbers (0, 9)
@@ -184,13 +203,16 @@ def aws_cloud_storage_upload(filename, encrypted_data):
 
     # Uploads the given file using a managed uploader, which will split
     # up large parts automatically and upload parts in parallel
-    #s3.upload_file(filename_id, bucket_name, filename_id) #(UNCOMMENT TO UPLOAD FILES)
+    s3.upload_file(filename_id, bucket_name, filename_id) #(UNCOMMENT TO UPLOAD FILES)
 
     # prints all objects (files) in bucket
     s3_resource = boto3.resource("s3")
     s3_bucket = s3_resource.Bucket(bucket_name)
     for obj in s3_bucket.objects.all():
         print(f"-- {obj.key}")
+
+    print("Deleting the local copy...")
+    os.remove(filename_id) # removes the file from the dir
 
     # delete objects from bucket
     #s3_bucket.objects.filter(Prefix='st17010024.json').delete() (UNCOMMENT AND ADJUST PREFIX TO DELETE)
