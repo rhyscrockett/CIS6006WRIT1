@@ -2,8 +2,10 @@ import sqlite3 as sql
 import random # generate unique ID
 import os # generate key
 import json # store the student credentials
-import sys
-from cryptography.fernet import Fernet
+import sys # for perfmoring exits
+from cryptography.fernet import Fernet # encryption (AES, CBC MODE)
+import boto3 # aws cloud storage
+import hashlib # hashing
 
 def app_menu():
     menu = {} # dictionary to hold selection with button
@@ -19,7 +21,7 @@ def app_menu():
         selection = input("Please select: ")
         if selection == '1':
             add_record()
-            break
+            continue
         elif selection == '2':
             view_record()
             break
@@ -33,9 +35,9 @@ def add_record():
     i = user_application_form() # run the user_application_form function and save the generated ID as g when successful
     k = generate_encryption_key() # run the generate_encryption_key function and save the generated key as f
     ct = encryption(i, k) # perform the encryption using the credentials (reading them from dir using ID) from user_application_form and the generated key from generate_encryption_key
-    c_hash, id_hash= hashing(i, ct) # perform hashing for both the ciphertext and the unique ID
+    c_hash, id_hash = hashing(i, ct) # perform hashing for both the ciphertext and the unique ID
     aws_cloud_storage_upload(i, ct) # upload the encrypted credentials to the cloud using the unique ID as the filename
-    user_managment_table(i, k, c_hash, id_hash) # database
+    user_managment_table(k, c_hash, id_hash) # database access and saving details
     
     # TODO (1) appropriate password-less authentication to gain access to app
     # DONE - see brackets (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE)
@@ -48,7 +50,7 @@ def add_record():
 def view_record():
     print("view: success")
     user_id = input("Enter your unique ID to continue: ")
-    # do checks on student id here
+    # do checks to ensure valid length and st at start etc)
     request = {}
     request['1'] = "Retrieve/download file: "
     request['2'] = "Exit: "
@@ -61,6 +63,7 @@ def view_record():
         selection = input("Please select: ")
         if selection == '1':
             print("Start Process")
+            unique_id = id_check(user_id)
             break
         elif selection == '2':
             print("End Process")
@@ -70,13 +73,29 @@ def view_record():
             
     # DONE (1) user enters their unique ID
     # DONE (2) request to view/download/retrieve file
-    # TODO (3) retrieves the hash values of unique ID from premised table  -> user managment table
+    # DONE (3) retrieves the hash values of unique ID from premised table  -> user managment table
     # TODO (4) app retrieves the ciphertext from the cloud storage bucket IF THE HASH VALUE MATCH
     # TODO (5) retrieves the encryption key associated with this unique ID
     # TODO (6) decrypts the ciphertext
     # TODO (7) performs file checksum and IF TRUE /
     # provides the file/record for viewing/downloading /
     # else file/record is corrupt and cannot be displayed/downloaded
+
+def id_check(unique_id):
+    user_hash = hashlib.sha256() # create hash of the entered ID to check if the matcing hash is found
+    user_hash.update(unique_id.encode('utf-8')) # string needs to be encoded before hashing
+    print("ID Hash: ", user_hash.hexdigest()) # simple print of id
+
+    connection = sql.connect("premised_table.db") # create a database
+    c = connection.cursor() # control the db
+    print("\nConnected to premised_table\n") # confirmation message
+
+    search = user_hash.hexdigest() # create a parameter to seach for the matching hash
+    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [search]) # search
+    if results is None:
+        print("User does not exist")
+    else:
+        print("Congratulations")
 
 def generate_id():
     """Generates a unique ID to be used by a student."""
@@ -126,27 +145,18 @@ def user_application_form():
     return unique_id
 
 def encryption(unique_id, key):
-    #f = generate_encryption_key() # call the encryption key generation function (NOT NEEDED HERE - SEE generate_encryption_key)
-
     # load file to bytes in order to encrypt data
     with open(unique_id+".json", "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
 
-    f = Fernet(key)
+    f = Fernet(key) # to use the encryption key
         
     encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
-
-    print("Ciphertext>>>", encrypted_data) # print ciphertext
-
-    # write the encrypted data back to the same json file
-    #with open(unique_id+".json", "wb") as encrypt_file:
-    #    encrypt_file.write(encrypted_data) # save the encrypted data as bytes back to the same file
+    print("Ciphertext >>>", encrypted_data) # print ciphertext
 
     return encrypted_data
 
 def hashing(encrypted_data, unique_id):
-    import hashlib
-
     cipher_hash = hashlib.sha256() # create hash for ciphertext
     id_hash = hashlib.sha256() # create hash for unique ID
     cipher_hash.update(encrypted_data.encode("utf-8")) # update the cipher hash to include ciphertext
@@ -156,32 +166,13 @@ def hashing(encrypted_data, unique_id):
 
     return cipher_hash, id_hash
 
-    # one hash value
-    #dk = hashlib.sha256()
-    #unique_id = gen_id.encode('utf-8') # convert to bytes
-    #dk.update(encrypted_data) # already bytes
-    #dk.update(unique_id)
-    #print("Generated Hash (both ID and encrypted data): ", dk.hexdigest())
-
 def aws_cloud_storage_upload(filename, encrypted_data):
     """Creates default Bucket for AWS to use."""
-    ### aws_cloud_storage
-    import boto3
-
     # create an S3 client
     s3 = boto3.client("s3")
 
     # Create a bucket called 'cis6006-storage
     s3.create_bucket(Bucket='cis6006-storage')
-
-    # Call S3 to list current buckets
-    response = s3.list_buckets()
-
-    # Get a list of all bucket names from the response
-    buckets = [bucket['Name'] for bucket in response['Buckets']]
-
-    # Print out the bucket list
-    print("Bucket List: ", buckets)
 
     filename_id = filename+".json"
 
@@ -193,7 +184,7 @@ def aws_cloud_storage_upload(filename, encrypted_data):
 
     # Uploads the given file using a managed uploader, which will split
     # up large parts automatically and upload parts in parallel
-    #s3.upload_file(filename_id, bucket_name, filename_id) (UNCOMMENT TO UPLOAD FILES)
+    #s3.upload_file(filename_id, bucket_name, filename_id) #(UNCOMMENT TO UPLOAD FILES)
 
     # prints all objects (files) in bucket
     s3_resource = boto3.resource("s3")
@@ -203,8 +194,9 @@ def aws_cloud_storage_upload(filename, encrypted_data):
 
     # delete objects from bucket
     #s3_bucket.objects.filter(Prefix='st17010024.json').delete() (UNCOMMENT AND ADJUST PREFIX TO DELETE)
+    #s3_bucket.objects.all().delete() # delte all files in bucket
 
-def user_managment_table(unique_id, encryption_key, cipher_hash, id_hash):
+def user_managment_table(encryption_key, cipher_hash, id_hash):
     connection = sql.connect("premised_table.db") # create a database
     c = connection.cursor() # control the db
     print("\nConnected to premised_table\n") # confirmation message
@@ -217,16 +209,11 @@ def user_managment_table(unique_id, encryption_key, cipher_hash, id_hash):
 
     # command to insert into database
     c.execute("""
-    INSERT INTO keys (unique_id, encryption_key, cipher_hash, id_hash) VALUES (?, ?, ?, ?);
-    """, (unique_id, encryption_key.decode(), cipher_hash.hexdigest(), id_hash.hexdigest()))
+    INSERT INTO keys (encryption_key, cipher_hash, id_hash) VALUES (?, ?, ?);
+    """, (encryption_key.decode(), cipher_hash.hexdigest(), id_hash.hexdigest()))
 
-
-    ### these values are needed
-    #print(id_hash.hexdigest())
-    #print(unique_id)
-    #print(cipher_hash.hexdigest())
-    #print(encryption_key.decode())
-
+    #c.execute("DELETE FROM keys")
+    
     ## loop to print all
     c.execute("SELECT * FROM keys")
     records = c.fetchall()
