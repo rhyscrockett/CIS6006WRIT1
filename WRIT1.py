@@ -63,8 +63,8 @@ def view_record():
         # allow user input for selecting the menu
         selection = input("Please select: ")
         if selection == '1':
-            print("Start Process")
             check = credential_check(user_id)
+            print("Success")
             break
         elif selection == '2':
             print("End Process")
@@ -75,8 +75,9 @@ def view_record():
     # DONE (1) user enters their unique ID
     # DONE (2) request to view/download/retrieve file
     # DONE (3) retrieves the hash values of unique ID from premised table  -> user managment table
-    # TODO (4) app retrieves the ciphertext from the cloud storage bucket IF THE HASH VALUE MATCH
+    # DONE (4) app retrieves the ciphertext from the cloud storage bucket IF THE HASH VALUE MATCH
     # TODO (5) retrieves the encryption key associated with this unique ID
+    # (search for encryption key associated with id_hash, and cipher_hash)
     # TODO (6) decrypts the ciphertext
     # TODO (7) performs file checksum and IF TRUE /
     # provides the file/record for viewing/downloading /
@@ -91,8 +92,8 @@ def credential_check(unique_id):
     c = connection.cursor() # control the db
     print("\nConnected to premised_table\n") # confirmation message
 
-    parameter = user_hash.hexdigest() # create a parameter to seach for the matching hash
-    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [parameter]) # search
+    id_parameter = user_hash.hexdigest() # create a parameter to seach for the matching hash
+    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [id_parameter]) # search
     if results is None:
         print("User does not exist")
         sys.exit(1)
@@ -100,7 +101,6 @@ def credential_check(unique_id):
         filename = unique_id+".json"
         s3 = boto3.client("s3")
         s3.download_file('cis6006-storage', filename, filename)
-        print("Success")
 
     with open(unique_id+".json", "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
@@ -108,13 +108,22 @@ def credential_check(unique_id):
     user_hash = hashing(file_data) # call the hashing function on the ciphertext via cloud storage (already encoded)
     print("Ciphertext Hash: ", user_hash.hexdigest()) # print hash
 
-    parameter = user_hash.hexdigest() # get str of user_hash
-    results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [parameter]) # search for matching hash
+    ## this should be used as the checksum isntead
+    ct_parameter = user_hash.hexdigest() # get str of user_hash
+    results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [ct_parameter]) # search for matching hash
     if results is None:
         print("Error recovering credentials") # if not matching hash is found, error is found
         sys.exit(1) # exit system
     else:
-        print("Success") # else hash is found for ciphertext, continue with decryption
+        print("Success, ciphertext hashing matches") # else hash is found for ciphertext, continue with decryption
+        results = c.execute("SELECT encryption_key FROM keys WHERE id_hash = ?", [id_parameter]).fetchone()
+        if results is None:
+            print("Error recovering encryption key.")
+            sys.exit(1)
+        else:
+            encryption_key = results[0]
+            print(encryption_key)
+
         
 def generate_id():
     """Generates a unique ID to be used by a student."""
@@ -173,6 +182,16 @@ def encryption(unique_id, key):
     encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
     print("Ciphertext >>>", encrypted_data) # print ciphertext
 
+    filename_id = unique_id+'.json'
+    
+    #write the encrypted data back to the same json file
+    with open(filename_id, "wb") as encrypt_file:
+        encrypt_file.write(encrypted_data)
+        
+    hash_v = hashlib.sha256()
+    hash_v.update(filename_id.encode("utf-8"))
+    print("This is the hash value of the file, rather than the ciphertext inside the file: ", hash_v.hexdigest())
+
     return encrypted_data
 
 def hashing(data):
@@ -200,6 +219,7 @@ def aws_cloud_storage_upload(filename, encrypted_data):
     # Uploads the given file using a managed uploader, which will split
     # up large parts automatically and upload parts in parallel
     s3.upload_file(filename_id, bucket_name, filename_id) #(UNCOMMENT TO UPLOAD FILES)
+    print("Uploading...")
 
     # prints all objects (files) in bucket
     s3_resource = boto3.resource("s3")
@@ -207,7 +227,9 @@ def aws_cloud_storage_upload(filename, encrypted_data):
     for obj in s3_bucket.objects.all():
         print(f"-- {obj.key}")
 
-    print("Deleting the local copy...")
+    print("Upload successful...")
+
+    print("Deleting local copy...")
     os.remove(filename_id) # removes the file from the dir
 
     # delete objects from bucket
