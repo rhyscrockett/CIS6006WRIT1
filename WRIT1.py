@@ -97,14 +97,29 @@ def credential_check(unique_id):
     if results is None:
         print("User does not exist")
         sys.exit(1)
-    else:
+    else: # if id hash matches student input, retrieve the ciphertext from cloud 
         filename = unique_id+".json"
         s3 = boto3.client("s3")
         s3.download_file('cis6006-storage', filename, filename)
 
+    results = c.execute("SELECT encryption_key FROM keys WHERE id_hash = ?", [id_parameter]).fetchone()
+    if results is None:
+        print("Error recovering encryption key...")
+        sys.exit(1)
+    else:
+        key = results[0] # return string of the encryption key
+
+    # load file to bytes in order to decrypt data and to perform hashing
     with open(unique_id+".json", "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
 
+    f = Fernet(key) # to use the encryption key
+
+    # decrypted data waiting for successful checksum of hash
+    plaintext = f.decrypt(file_data)
+    print("Plaintext: ", plaintext.decode("utf-8")) # decode returns plaintext not in binary
+
+    # generate hash for downloaded file
     user_hash = hashing(file_data) # call the hashing function on the ciphertext via cloud storage (already encoded)
     print("Ciphertext Hash: ", user_hash.hexdigest()) # print hash
 
@@ -112,18 +127,11 @@ def credential_check(unique_id):
     ct_parameter = user_hash.hexdigest() # get str of user_hash
     results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [ct_parameter]) # search for matching hash
     if results is None:
-        print("Error recovering credentials") # if not matching hash is found, error is found
+        print("Error with file. Exiting...") # if not matching hash is found, error is found
         sys.exit(1) # exit system
     else:
-        print("Success, ciphertext hashing matches") # else hash is found for ciphertext, continue with decryption
-        results = c.execute("SELECT encryption_key FROM keys WHERE id_hash = ?", [id_parameter]).fetchone()
-        if results is None:
-            print("Error recovering encryption key.")
-            sys.exit(1)
-        else:
-            encryption_key = results[0]
-            print(encryption_key)
-
+        print("CHECKSUM succesful")
+        
         
 def generate_id():
     """Generates a unique ID to be used by a student."""
@@ -181,16 +189,6 @@ def encryption(unique_id, key):
         
     encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
     print("Ciphertext >>>", encrypted_data) # print ciphertext
-
-    filename_id = unique_id+'.json'
-    
-    #write the encrypted data back to the same json file
-    with open(filename_id, "wb") as encrypt_file:
-        encrypt_file.write(encrypted_data)
-        
-    hash_v = hashlib.sha256()
-    hash_v.update(filename_id.encode("utf-8"))
-    print("This is the hash value of the file, rather than the ciphertext inside the file: ", hash_v.hexdigest())
 
     return encrypted_data
 
