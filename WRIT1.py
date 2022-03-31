@@ -35,9 +35,10 @@ def add_record():
     i = user_application_form() # run the user_application_form function and save the generated ID as g when successful
     k = generate_encryption_key() # run the generate_encryption_key function and save the generated key as f
     ct = encryption(i, k) # perform the encryption using the credentials (reading them from dir using ID) from user_application_form and the generated key from generate_encryption_key
-    c_hash, id_hash = hashing(i, ct) # perform hashing for both the ciphertext and the unique ID
+    ct_hash = hashing(ct) # perform hashing for ciphertext (ciphertext already encoded)
+    id_hash = hashing(i.encode("utf-8")) # perform hashing for unique ID (must be encoded before hashing)
     aws_cloud_storage_upload(i, ct) # upload the encrypted credentials to the cloud using the unique ID as the filename
-    user_managment_table(k, c_hash, id_hash) # database access and saving details
+    user_managment_table(k, ct_hash, id_hash) # database access and saving details
     
     # TODO (1) appropriate password-less authentication to gain access to app
     # DONE - see brackets (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE)
@@ -82,16 +83,17 @@ def view_record():
     # else file/record is corrupt and cannot be displayed/downloaded
 
 def credential_check(unique_id):
-    user_hash = hashlib.sha256() # create hash of the entered ID to check if the matcing hash is found
-    user_hash.update(unique_id.encode('utf-8')) # string needs to be encoded before hashing
+    #user_hash = hashlib.sha256() # create hash of the entered ID to check if the matcing hash is found
+    #user_hash.update(unique_id.encode('utf-8')) # string needs to be encoded before hashing
+    user_hash = hashing(unique_id.encode("utf-8")) # call the hashing function on the ID passed via view records (must be encoded)
     print("Unique ID Hash: ", user_hash.hexdigest())
 
     connection = sql.connect("premised_table.db") # create a database
     c = connection.cursor() # control the db
     print("\nConnected to premised_table\n") # confirmation message
 
-    search_id = user_hash.hexdigest() # create a parameter to seach for the matching hash
-    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [search_id]) # search
+    parameter = user_hash.hexdigest() # create a parameter to seach for the matching hash
+    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [parameter]) # search
     if results is None:
         print("User does not exist")
         sys.exit(1)
@@ -104,12 +106,13 @@ def credential_check(unique_id):
     with open(unique_id+".json", "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
 
-    user_hash = hashlib.sha256() # redefine above variable to check ciphertext hash
-    user_hash.update(file_data) # update the user_hash to use the file_data instead
+    #user_hash = hashlib.sha256() # redefine above variable to check ciphertext hash
+    #user_hash.update(file_data) # update the user_hash to use the file_data instead
+    user_hash = hashing(file_data) # call the hashing function on the ciphertext via cloud storage (already encoded)
     print("Ciphertext Hash: ", user_hash.hexdigest()) # print hash
 
-    search_ct = user_hash.hexdigest() # get str of user_hash
-    results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [search_ct]) # search for matching hash
+    parameter = user_hash.hexdigest() # get str of user_hash
+    results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [parameter]) # search for matching hash
     if results is None:
         print("Error recovering credentials") # if not matching hash is found, error is found
         sys.exit(1) # exit system
@@ -175,15 +178,21 @@ def encryption(unique_id, key):
 
     return encrypted_data
 
-def hashing(encrypted_data, unique_id):
-    cipher_hash = hashlib.sha256() # create hash for ciphertext
-    id_hash = hashlib.sha256() # create hash for unique ID
-    cipher_hash.update(encrypted_data.encode("utf-8")) # update the cipher hash to include ciphertext
-    id_hash.update(unique_id) # update id hash to include the unique id
-    print("Ciphertext Hash: ", cipher_hash.hexdigest()) # print cipher hash
-    print("ID Hash: ", id_hash.hexdigest()) # print the ID hash
+def hashing(data):
+    hash_value = hashlib.sha256() # create sha256 hash object
+    hash_value.update(data) # update the hash with the input data
 
-    return cipher_hash, id_hash
+    return hash_value # return the hash value
+
+#def hashing(encrypted_data, unique_id):
+    #cipher_hash = hashlib.sha256() # create hash for ciphertext
+    #id_hash = hashlib.sha256() # create hash for unique ID
+    #cipher_hash.update(encrypted_data.encode("utf-8")) # update the cipher hash to include ciphertext
+    #id_hash.update(unique_id) # update id hash to include the unique id
+    #print("Ciphertext Hash: ", cipher_hash.hexdigest()) # print cipher hash
+    #print("ID Hash: ", id_hash.hexdigest()) # print the ID hash
+
+    #return cipher_hash, id_hash
 
 def aws_cloud_storage_upload(filename, encrypted_data):
     """Creates default Bucket for AWS to use."""
