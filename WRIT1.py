@@ -63,8 +63,10 @@ def view_record():
         # allow user input for selecting the menu
         selection = input("Please select: ")
         if selection == '1':
-            check = credential_check(user_id)
-            print("Success")
+            k = credential_check(user_id)
+            pt = decryption(user_id, k)
+            checksum(user_id)
+            return_credentials(user_id, pt)
             break
         elif selection == '2':
             print("End Process")
@@ -76,9 +78,9 @@ def view_record():
     # DONE (2) request to view/download/retrieve file
     # DONE (3) retrieves the hash values of unique ID from premised table  -> user managment table
     # DONE (4) app retrieves the ciphertext from the cloud storage bucket IF THE HASH VALUE MATCH
-    # TODO (5) retrieves the encryption key associated with this unique ID
-    # (search for encryption key associated with id_hash, and cipher_hash)
-    # TODO (6) decrypts the ciphertext
+    # DONE (5) retrieves the encryption key associated with this unique ID
+    # (search for encryption key associated with id_hash)
+    # DONE (6) decrypts the ciphertext
     # TODO (7) performs file checksum and IF TRUE /
     # provides the file/record for viewing/downloading /
     # else file/record is corrupt and cannot be displayed/downloaded
@@ -86,30 +88,35 @@ def view_record():
 def credential_check(unique_id):
     """Perform hash checks between user ID and the ciphertext to ensure credentials are correct."""
     user_hash = hashing(unique_id.encode("utf-8")) # call the hashing function on the ID passed via view records (must be encoded)
-    print("Unique ID Hash: ", user_hash.hexdigest())
+    #print("Unique ID Hash: ", user_hash.hexdigest())
 
     connection = sql.connect("premised_table.db") # create a database
     c = connection.cursor() # control the db
-    print("\nConnected to premised_table\n") # confirmation message
+    print("Connected to premised_table\n") # confirmation message
 
-    id_parameter = user_hash.hexdigest() # create a parameter to seach for the matching hash
-    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [id_parameter]) # search
+    # check user id hash is present in premised storage
+    param = user_hash.hexdigest() # create a parameter to seach for the matching hash
+    results = c.execute("SELECT * FROM keys WHERE id_hash = ?", [param]) # search
     if results is None:
         print("User does not exist")
         sys.exit(1)
     else: # if id hash matches student input, retrieve the ciphertext from cloud 
-        filename = unique_id+".json"
+        filename = unique_id+".json" # create filename using the entered ID
         s3 = boto3.client("s3")
-        s3.download_file('cis6006-storage', filename, filename)
+        s3.download_file('cis6006-storage', filename, filename) # download the file from the relevant bucket and using the filename as a search 
 
-    results = c.execute("SELECT encryption_key FROM keys WHERE id_hash = ?", [id_parameter]).fetchone()
+    # retrieve encryption key associated with unique ID if hash match
+    results = c.execute("SELECT encryption_key FROM keys WHERE id_hash = ?", [param]).fetchone()
     if results is None:
         print("Error recovering encryption key...")
         sys.exit(1)
     else:
         key = results[0] # return string of the encryption key
 
-    # load file to bytes in order to decrypt data and to perform hashing
+    return key
+
+def decryption(unique_id, key):
+    # load file to bytes in order to decrypt data
     with open(unique_id+".json", "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
 
@@ -118,20 +125,52 @@ def credential_check(unique_id):
     # decrypted data waiting for successful checksum of hash
     plaintext = f.decrypt(file_data)
     print("Plaintext: ", plaintext.decode("utf-8")) # decode returns plaintext not in binary
+    print(type(plaintext))
 
+    return plaintext
+
+def checksum(filename):
+    connection = sql.connect("premised_table.db") # create a database
+    c = connection.cursor() # control the db
+    print("Connected to premised_table\n") # confirmation message
+    
+    # load file to bytes in order to perform hashing
+    with open(filename+".json", "rb") as read_file:
+        file_data = read_file.read() # read the file to file_data
+        
     # generate hash for downloaded file
     user_hash = hashing(file_data) # call the hashing function on the ciphertext via cloud storage (already encoded)
-    print("Ciphertext Hash: ", user_hash.hexdigest()) # print hash
+    #print("Ciphertext Hash: ", user_hash.hexdigest()) # print hash
 
     ## this should be used as the checksum isntead
-    ct_parameter = user_hash.hexdigest() # get str of user_hash
-    results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [ct_parameter]) # search for matching hash
+    param = user_hash.hexdigest() # get str of user_hash
+    results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [param]) # search for matching hash
     if results is None:
-        print("Error with file. Exiting...") # if not matching hash is found, error is found
+        print("File/record is corrupt and therefore cannot be displayed/downloaded. Exiting...")
+        print("Deleting downloaded copy...\n")
+        os.remove(filename+".json") # removes the file from the dir
         sys.exit(1) # exit system
     else:
         print("CHECKSUM succesful")
         
+        # provde options for viewing or save file for download
+        # if user selects download, save plaintext back to the local file location,
+        # if they select print, use dictionary to print the information back and then remove local copy
+
+def return_credentials(filename, plaintext):
+    with open(filename+".json", "w") as write_file:
+        write_file.write(plaintext.decode("utf-8")) # save the credentials using write to save the plaintext json string as a json formatted file
+    choice = input("Would you like to (v)iew or (d)ownload your credentials? ").strip().lower()
+    if choice == 'v':
+        with open(filename+".json") as json_file:
+            credentials = json.load(json_file) # open json file to write the data to a python dictionary
+
+        print("First_Name:", credentials['first_name'])
+        print("Last_Name:", credentials['last_name'])
+        print("Email: ", credentials['email'])
+
+        print("Deleting downloaded copy...\n")
+        os.remove(filename+".json")
         
 def generate_id():
     """Generates a unique ID to be used by a student."""
@@ -148,7 +187,7 @@ def generate_id():
 def generate_encryption_key():
     """Generate an encryption key using the cryptography library (Fernet - an AES CBC MODE based cipher)."""
     key = Fernet.generate_key()
-    print("Generated Key: ", key)
+    #print("Generated Key: ", key)
 
     return key
 
@@ -188,7 +227,7 @@ def encryption(unique_id, key):
     f = Fernet(key) # to use the encryption key
         
     encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
-    print("Ciphertext >>>", encrypted_data) # print ciphertext
+    #print("Ciphertext >>>", encrypted_data) # print ciphertext
 
     return encrypted_data
 
@@ -217,7 +256,7 @@ def aws_cloud_storage_upload(filename, encrypted_data):
     # Uploads the given file using a managed uploader, which will split
     # up large parts automatically and upload parts in parallel
     s3.upload_file(filename_id, bucket_name, filename_id) #(UNCOMMENT TO UPLOAD FILES)
-    print("Uploading...")
+    print("\nUploading...")
 
     # prints all objects (files) in bucket
     s3_resource = boto3.resource("s3")
@@ -225,9 +264,9 @@ def aws_cloud_storage_upload(filename, encrypted_data):
     for obj in s3_bucket.objects.all():
         print(f"-- {obj.key}")
 
-    print("Upload successful...")
+    print("Upload successful!...\n")
 
-    print("Deleting local copy...")
+    print("Deleting local copy...\n")
     os.remove(filename_id) # removes the file from the dir
 
     # delete objects from bucket
@@ -237,7 +276,7 @@ def aws_cloud_storage_upload(filename, encrypted_data):
 def user_managment_table(encryption_key, cipher_hash, id_hash):
     connection = sql.connect("premised_table.db") # create a database
     c = connection.cursor() # control the db
-    print("\nConnected to premised_table\n") # confirmation message
+    print("Connected to premised_table\n") # confirmation message
 
     # command to create database
     c.execute("""
