@@ -83,8 +83,7 @@ def view_record():
     # else file/record is corrupt and cannot be displayed/downloaded
 
 def credential_check(unique_id):
-    #user_hash = hashlib.sha256() # create hash of the entered ID to check if the matcing hash is found
-    #user_hash.update(unique_id.encode('utf-8')) # string needs to be encoded before hashing
+    """Perform hash checks between user ID and the ciphertext to ensure credentials are correct."""
     user_hash = hashing(unique_id.encode("utf-8")) # call the hashing function on the ID passed via view records (must be encoded)
     print("Unique ID Hash: ", user_hash.hexdigest())
 
@@ -106,8 +105,6 @@ def credential_check(unique_id):
     with open(unique_id+".json", "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
 
-    #user_hash = hashlib.sha256() # redefine above variable to check ciphertext hash
-    #user_hash.update(file_data) # update the user_hash to use the file_data instead
     user_hash = hashing(file_data) # call the hashing function on the ciphertext via cloud storage (already encoded)
     print("Ciphertext Hash: ", user_hash.hexdigest()) # print hash
 
