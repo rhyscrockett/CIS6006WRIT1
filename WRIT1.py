@@ -181,16 +181,6 @@ def hashing(data):
 
     return hash_value # return the hash value
 
-#def hashing(encrypted_data, unique_id):
-    #cipher_hash = hashlib.sha256() # create hash for ciphertext
-    #id_hash = hashlib.sha256() # create hash for unique ID
-    #cipher_hash.update(encrypted_data.encode("utf-8")) # update the cipher hash to include ciphertext
-    #id_hash.update(unique_id) # update id hash to include the unique id
-    #print("Ciphertext Hash: ", cipher_hash.hexdigest()) # print cipher hash
-    #print("ID Hash: ", id_hash.hexdigest()) # print the ID hash
-
-    #return cipher_hash, id_hash
-
 def aws_cloud_storage_upload(filename, encrypted_data):
     """Creates default Bucket for AWS to use."""
     # create an S3 client
