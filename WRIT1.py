@@ -81,7 +81,7 @@ def view_record():
     # DONE (5) retrieves the encryption key associated with this unique ID
     # (search for encryption key associated with id_hash)
     # DONE (6) decrypts the ciphertext
-    # TODO (7) performs file checksum and IF TRUE /
+    # DONE (7) performs file checksum and IF TRUE /
     # provides the file/record for viewing/downloading /
     # else file/record is corrupt and cannot be displayed/downloaded
 
@@ -100,10 +100,8 @@ def credential_check(unique_id):
     if results is None:
         print("User does not exist")
         sys.exit(1)
-    else: # if id hash matches student input, retrieve the ciphertext from cloud 
-        filename = unique_id+".json" # create filename using the entered ID
-        s3 = boto3.client("s3")
-        s3.download_file('cis6006-storage', filename, filename) # download the file from the relevant bucket and using the filename as a search 
+    else: # if id hash matches student input, retrieve the ciphertext from cloud
+        aws_cloud_storage_download(unique_id) # run download function
 
     # retrieve encryption key associated with unique ID if hash match
     results = c.execute("SELECT encryption_key FROM keys WHERE id_hash = ?", [param]).fetchone()
@@ -115,6 +113,16 @@ def credential_check(unique_id):
 
     return key
 
+def aws_cloud_storage_download(file_name):
+    """Downloads student credentials from AWS cloud storage bucket."""
+    s3 = boto3.client("s3")
+    file_name = file_name+".json"
+    bucket_name = "cis6006-storage"
+    s3.download_file(bucket_name, file_name, file_name) # download the file from the relevant bucket and using the filename as a search
+    print("\nDownloading...")
+
+    print("Download successful!...\n")
+
 def decryption(unique_id, key):
     # load file to bytes in order to decrypt data
     with open(unique_id+".json", "rb") as read_file:
@@ -124,8 +132,7 @@ def decryption(unique_id, key):
 
     # decrypted data waiting for successful checksum of hash
     plaintext = f.decrypt(file_data)
-    print("Plaintext: ", plaintext.decode("utf-8")) # decode returns plaintext not in binary
-    print(type(plaintext))
+    #print("Plaintext: ", plaintext.decode("utf-8")) # decode returns plaintext not in binary
 
     return plaintext
 
@@ -152,25 +159,27 @@ def checksum(filename):
         sys.exit(1) # exit system
     else:
         print("CHECKSUM succesful")
-        
-        # provde options for viewing or save file for download
-        # if user selects download, save plaintext back to the local file location,
-        # if they select print, use dictionary to print the information back and then remove local copy
+        # continue to return_credentials via view_record
 
 def return_credentials(filename, plaintext):
     with open(filename+".json", "w") as write_file:
         write_file.write(plaintext.decode("utf-8")) # save the credentials using write to save the plaintext json string as a json formatted file
     choice = input("Would you like to (v)iew or (d)ownload your credentials? ").strip().lower()
-    if choice == 'v':
-        with open(filename+".json") as json_file:
-            credentials = json.load(json_file) # open json file to write the data to a python dictionary
-
-        print("First_Name:", credentials['first_name'])
-        print("Last_Name:", credentials['last_name'])
-        print("Email: ", credentials['email'])
-
-        print("Deleting downloaded copy...\n")
-        os.remove(filename+".json")
+    while True:
+        if choice == 'v':
+            with open(filename+".json") as json_file:
+                credentials = json.load(json_file) # open json file to write the data to a python dictionary
+            print("First_Name:", credentials['first_name'])
+            print("Last_Name:", credentials['last_name'])
+            print("Email: ", credentials['email'])
+            print("Deleting downloaded copy...\n")
+            os.remove(filename+".json")
+        elif choice == 'd':
+            print("Saving decrypted file to current directory...") # exit without deleting document
+            break
+        else:
+            print("Incorrect input")
+            continue
         
 def generate_id():
     """Generates a unique ID to be used by a student."""
@@ -288,8 +297,6 @@ def user_managment_table(encryption_key, cipher_hash, id_hash):
     c.execute("""
     INSERT INTO keys (encryption_key, cipher_hash, id_hash) VALUES (?, ?, ?);
     """, (encryption_key.decode(), cipher_hash.hexdigest(), id_hash.hexdigest()))
-
-    #c.execute("DELETE FROM keys")
     
     ## loop to print all
     c.execute("SELECT * FROM keys")
@@ -298,14 +305,12 @@ def user_managment_table(encryption_key, cipher_hash, id_hash):
         print(row)
     
     connection.commit() # save table
-    print("\nPython Variables passed from parameters inserted successfully into sqlite\n") # success print
+    print("Python Variables passed from parameters inserted successfully into sqlite\n") # success print
 
     c.close() # close database (memory managment)
     
 def main():
     app_menu() # start menu
-    
-    # TODO needed SQL "on premise" user access management table
     
 if __name__ == '__main__':
     main()
