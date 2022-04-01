@@ -41,17 +41,10 @@ def add_record():
     id_hash = hashing(i.encode("utf-8")) # perform hashing for unique ID (must be encoded before hashing)
     aws_cloud_storage_upload(i, ct) # upload the encrypted credentials to the cloud using the unique ID as the filename
     conn = establish_connection() # establish connection with a premised database
-    create_table(conn) # create a user managment table
-    insert_data(conn, k, ct_hash, id_hash)
-    #user_managment_table(k, ct_hash, id_hash) # database access and saving details
+    create_user_management_table(conn) # create a user management table
+    insert_data(conn, k, ct_hash, id_hash) # insert enc key, cipher has and ID hash into table (will check if already exists)
     
     # TODO (1) appropriate password-less authentication to gain access to app
-    # DONE - see brackets (2) a form that a user attaches credentials and submits -> user managment table (currently a dictionary; NO DATABASE)
-    # DONE (3) after submitting form, app generates an encryption key and unique ID
-    # DONE (4) display uniqiue ID and use either block/stream cipher to encrypt the file (credential(s)) and thus generate ciphertext
-    # DONE (5) generate hash values of the ciphertext and unique ID
-    # DONE (6) store the ciphertext in a cloud storage bucket
-    # DONE (7) save the encryption key and hash values in a premised table -> user management table
 
 def view_record():
     """Present the user with a menu to start record recovery."""
@@ -79,26 +72,13 @@ def view_record():
             break
         else:
             print("Invalid Selection!")
-            
-    # DONE (1) user enters their unique ID
-    # DONE (2) request to view/download/retrieve file
-    # DONE (3) retrieves the hash values of unique ID from premised table  -> user managment table
-    # DONE (4) app retrieves the ciphertext from the cloud storage bucket IF THE HASH VALUE MATCH
-    # DONE (5) retrieves the encryption key associated with this unique ID
-    # (search for encryption key associated with id_hash)
-    # DONE (6) decrypts the ciphertext
-    # DONE (7) performs file checksum and IF TRUE /
-    # provides the file/record for viewing/downloading /
-    # else file/record is corrupt and cannot be displayed/downloaded
 
 def credential_check(unique_id):
     """Perform hash checks between user ID and the ciphertext to ensure credentials are correct."""
-    user_hash = hashing(unique_id.encode("utf-8")) # call the hashing function on the ID passed via view records (must be encoded)
-    #print("Unique ID Hash: ", user_hash.hexdigest())
+    user_hash = hashing(unique_id.encode("utf-8")) # call hashing function on ID passed (must be encoded)
 
-    connection = sql.connect("premised_table.db") # create a database
-    c = connection.cursor() # control the db
-    print("Connected to premised_table\n") # confirmation message
+    connection = establish_connection() # connect to database
+    c = connection.cursor() # create cursor to query search
 
     # check user id hash is present in premised storage
     param = user_hash.hexdigest() # create a parameter to seach for the matching hash
@@ -116,13 +96,13 @@ def credential_check(unique_id):
         sys.exit(1)
     else:
         key = results[0] # return string of the encryption key
+        c.close()
 
     return key
 
 def aws_cloud_storage_download(file_name):
     """Downloads student credentials from AWS cloud storage bucket."""
     s3 = boto3.client("s3")
-    file_name = file_name+".json"
     bucket_name = "cis6006-storage"
     s3.download_file(bucket_name, file_name, file_name) # download the file from the relevant bucket and using the filename as a search
     print("\nDownloading...")
@@ -131,8 +111,9 @@ def aws_cloud_storage_download(file_name):
 
 def decryption(unique_id, key):
     """Decrypts the student credentials using the encryption key retrieved from credential_check()."""
-    # load file to bytes in order to decrypt data
-    with open(unique_id+".json", "rb") as read_file:
+    
+    # load file to bytes in order to decrypt data (read_as_bytes)
+    with open(unique_id, "rb") as read_file:
         file_data = read_file.read() # read the file to file_data
 
     f = Fernet(key) # to use the encryption key
@@ -142,14 +123,15 @@ def decryption(unique_id, key):
 
     return plaintext
 
-def checksum(filename):
+def checksum(file_name):
     """Perform a file CHECKSUM using the hash generated with the ciphertext before uploading to the cloud."""
-    connection = sql.connect("premised_table.db") # create a database
-    c = connection.cursor() # control the db
-    print("Connected to premised_table\n") # confirmation message
+    connection = establish_connection()
+    c = connection.cursor()
+
+    #file_data = open_file_as_bytes(file_name)
     
-    # load file to bytes in order to perform hashing
-    with open(filename+".json", "rb") as read_file:
+    # load file to bytes in order to perform hashing (read_as_bytes)
+    with open(file_name, "rb") as read_file: 
         file_data = read_file.read() # read the file to file_data
         
     # generate hash for downloaded file
@@ -165,18 +147,37 @@ def checksum(filename):
         sys.exit(1) # exit system
     else:
         print("CHECKSUM succesful")
+        c.close()
+        os.remove(file_name)
         # continue to return_credentials via view_record
+
+# write_file and write_json can join into one function
+def write_file(file_name, plaintext): # this write is for recovering the plaintext back into json
+    with open(file_name+".json", "w") as data:
+        data.write(plaintext) # save the credentials as a standard string
+        #json.dump(plaintext, data) #KEEP TRYING THIS
+
+# load parses a JSON file as a py dictionary/loads parses json string as a python string
+def open_json(file_name):
+    with open(file_name+".json", "rb") as read_file:
+        file_data = json.load(read_file)
+
+    return file_data
+
+# dump writes python dict to JSON encoded dict in file/dumps writes python dict to JSON encoded string format
+def write_json(file_name, credentials):
+    with open(file_name+".json", "w") as data:
+        json.dump(credentials, data) # save the dict credentials to a JSON file with the ID num as name
 
 def return_credentials(filename, plaintext):
     """Upon successful CHECKSUM, offer the user to view or download the decrypted credentials.
     view prints the decrypted file using a dictionary, download keeps the decrypted json in the users dir."""
-    with open(filename+".json", "w") as write_file:
-        write_file.write(plaintext.decode("utf-8")) # save the credentials using write to save the plaintext json string as a json formatted file
+    valid_json_string = json.loads(plaintext.decode("utf-8")) # loads the plaintext into string
+    write_json(filename, valid_json_string) # write string back to file using json dump
     choice = input("Would you like to (v)iew or (d)ownload your credentials? ").strip().lower()
     while True:
         if choice == 'v':
-            with open(filename+".json") as json_file:
-                credentials = json.load(json_file) # open json file to write the data to a python dictionary
+            credentials = open_json(filename)
             print("First_Name:", credentials['first_name'])
             print("Last_Name:", credentials['last_name'])
             print("Email: ", credentials['email'])
@@ -219,9 +220,9 @@ def user_application_form():
         submit = input("Check your details are correct and (s)ubmit. Alternatively, (e)xit: ").lower().strip()
         if submit == 's':
             unique_id = generate_id() # generate a unique id
-            # Write the json file
-            with open(unique_id+".json", "w") as write_file:
-                json.dump(credentials, write_file) # save the credentials to a JSON file with the ID num as name
+            # write the credentials (python dictionary) to JSON file
+            with open(unique_id+".json", "w") as data:
+                json.dump(credentials, data) # save the dictionary credentials to a JSON file with the ID num as name
             break
         elif submit == 'e':
             print("Exiting...")
@@ -235,13 +236,16 @@ def user_application_form():
 def encryption(unique_id, key):
     """Performs encryption on the user credentials using the generated key for the unique ID."""
     # load file to bytes in order to encrypt data
-    with open(unique_id+".json", "rb") as read_file:
-        file_data = read_file.read() # read the file to file_data
 
+    # read the JSON file returning a string of bytes (read_as_bytes)
+    with open(unique_id+".json", "rb") as read_file:
+        file_data = read_file.read()
+    
     f = Fernet(key) # to use the encryption key
         
     encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
-    #print("Ciphertext >>>", encrypted_data) # print ciphertext
+    
+    os.remove(unique_id+".json") # removes the credential file after encrypting
 
     return encrypted_data
 
@@ -256,21 +260,18 @@ def aws_cloud_storage_upload(filename, encrypted_data):
     """Creates default Bucket for AWS to use. And uploads encrypted user credentials to as an object."""
     # create an S3 client
     s3 = boto3.client("s3")
+    bucket_name = 'cis6006-storage'
 
     # Create a bucket called 'cis6006-storage
-    s3.create_bucket(Bucket='cis6006-storage')
+    s3.create_bucket(Bucket=bucket_name)
 
-    filename_id = filename+".json"
-
-    #write the encrypted data back to the same json file
-    with open(filename_id, "wb") as encrypt_file:
+    # write the encrypted string of bytes (write_as_bytes)
+    with open(filename, "wb") as encrypt_file:
         encrypt_file.write(encrypted_data)
-
-    bucket_name = 'cis6006-storage'
 
     # Uploads the given file using a managed uploader, which will split
     # up large parts automatically and upload parts in parallel
-    s3.upload_file(filename_id, bucket_name, filename_id) #(UNCOMMENT TO UPLOAD FILES)
+    s3.upload_file(filename, bucket_name, filename)
     print("\nUploading...")
 
     # prints all objects (files) in bucket
@@ -282,74 +283,41 @@ def aws_cloud_storage_upload(filename, encrypted_data):
     print("Upload successful!...\n")
 
     print("Deleting local copy...\n")
-    os.remove(filename_id) # removes the file from the dir
-
-    # delete objects from bucket
-    #s3_bucket.objects.filter(Prefix='st17010024.json').delete() (UNCOMMENT AND ADJUST PREFIX TO DELETE)
-    #s3_bucket.objects.all().delete() # delte all files in bucket
-
-def user_managment_table(encryption_key, cipher_hash, id_hash):
-    """Function to create a on-site premsed database, then create a table to hold the encryption key, ciphertext hash, and ID hash."""
-    connection = sql.connect("premised_table.db") # create a database
-    c = connection.cursor() # control the db
-    print("Connected to premised_table\n") # confirmation message
-
-    # command to create database
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS keys
-    ([unique_id] TEXT PRIMARY KEY, [encryption_key] TEXT, [cipher_hash] TEXT, [id_hash] TEXT)
-    """)
-
-    # command to insert into database
-    c.execute("""
-    INSERT INTO keys (encryption_key, cipher_hash, id_hash) VALUES (?, ?, ?);
-    """, (encryption_key.decode(), cipher_hash.hexdigest(), id_hash.hexdigest()))
-    
-    ## loop to print all
-    c.execute("SELECT * FROM keys")
-    records = c.fetchall()
-    for row in records:
-        print(row)
-    
-    connection.commit() # save table
-    print("Python Variables passed from parameters inserted successfully into sqlite\n") # success print
-
-    c.close() # close database (memory managment)
+    os.remove(filename) # removes the encrypted credentials file from the dir
 
 def establish_connection():
-    """Create's a new database """
+    """Connect to the local table defined below. Used throughout the body of code."""
     connection = None
     try:
         connection = sql.connect("premised_table.db")
         print("Connected to database...\n")
-        print(sql.version)
         return connection
     except sql.Error as e:
         print(e)
     return connection
 
-def create_table(connection):
+def create_user_management_table(connection):
     """Create a table on local storage. This will only need to be done once."""
-    #connection = create_connection()
     if connection is not None:
         c = connection.cursor()
         c.execute("""
         CREATE TABLE IF NOT EXISTS keys
         ([encryption_key] TEXT, [cipher_hash] TEXT, [id_hash] TEXT)
         """)
+        c.close()
     else:
         print("Cannot connect to the database...\n")
         
 
 def insert_data(connection, encryption_key, cipher_hash, id_hash):
     """Insert data (encryption key, ciphertext hash and ID hash into the premised table."""
-    #connection = create_connetion() # connect to database
     if connection is not None:
         c = connection.cursor()
         c.execute("""
         INSERT INTO keys (encryption_key, cipher_hash, id_hash) VALUES (?, ?, ?);
         """, (encryption_key.decode(), cipher_hash.hexdigest(), id_hash.hexdigest()))
-        connection.commit() # save the table?
+        connection.commit() # save the table
+        c.close()
     else:
         print("Cannot connect to the database...")
     
