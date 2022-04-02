@@ -17,7 +17,6 @@ def app_menu():
         options = menu.keys() # return the keys from menu dictionary
         for entry in options:
             print(entry, menu[entry]) # print number alongside the text
-
         # allow user input for selecting the menu
         selection = input("Please select: ")
         if selection == '1':
@@ -58,7 +57,6 @@ def view_record():
         options = request.keys() # return the keys from menu dictionary
         for entry in options:
             print(entry, request[entry]) # print number alongside the text
-
         # allow user input for selecting the menu
         selection = input("Please select: ")
         if selection == '1':
@@ -76,7 +74,7 @@ def view_record():
 def credential_check(unique_id):
     """Perform hash checks between user ID and the ciphertext to ensure credentials are correct."""
     user_hash = hashing(unique_id.encode("utf-8")) # call hashing function on ID passed (must be encoded)
-
+    
     connection = establish_connection() # connect to database
     c = connection.cursor() # create cursor to query search
 
@@ -111,15 +109,12 @@ def aws_cloud_storage_download(file_name):
 
 def decryption(unique_id, key):
     """Decrypts the student credentials using the encryption key retrieved from credential_check()."""
-    
-    # load file to bytes in order to decrypt data (read_as_bytes)
-    with open(unique_id, "rb") as read_file:
-        file_data = read_file.read() # read the file to file_data
+
+    file_data = read_as_bytes(unique_id) # read the encrypted file as bytes
 
     f = Fernet(key) # to use the encryption key
 
-    # decrypted data waiting for successful checksum of hash
-    plaintext = f.decrypt(file_data)
+    plaintext = f.decrypt(file_data) # decrypt the ciphertext back to plaintext
 
     return plaintext
 
@@ -128,14 +123,10 @@ def checksum(file_name):
     connection = establish_connection()
     c = connection.cursor()
 
-    #file_data = open_file_as_bytes(file_name)
-    
-    # load file to bytes in order to perform hashing (read_as_bytes)
-    with open(file_name, "rb") as read_file: 
-        file_data = read_file.read() # read the file to file_data
+    file_data = read_as_bytes(file_name) # read the encrypted file as bytes to perform CHECKSUM
         
     # generate hash for downloaded file
-    user_hash = hashing(file_data) # call the hashing function on the ciphertext via cloud storage (already encoded)
+    user_hash = hashing(file_data) # call the hashing function on the encoded ciphertext via cloud storage
 
     ## this should be used as the checksum isntead
     param = user_hash.hexdigest() # get str of user_hash
@@ -151,29 +142,30 @@ def checksum(file_name):
         os.remove(file_name)
         # continue to return_credentials via view_record
 
-# write_file and write_json can join into one function
-def write_file(file_name, plaintext): # this write is for recovering the plaintext back into json
-    with open(file_name+".json", "w") as data:
-        data.write(plaintext) # save the credentials as a standard string
-        #json.dump(plaintext, data) #KEEP TRYING THIS
-
-# load parses a JSON file as a py dictionary/loads parses json string as a python string
 def open_json(file_name):
-    with open(file_name+".json", "rb") as read_file:
+    """Open JSON file."""
+    with open(file_name+".json") as read_file:
         file_data = json.load(read_file)
 
     return file_data
 
-# dump writes python dict to JSON encoded dict in file/dumps writes python dict to JSON encoded string format
 def write_json(file_name, credentials):
+    """Write JSON file."""
     with open(file_name+".json", "w") as data:
         json.dump(credentials, data) # save the dict credentials to a JSON file with the ID num as name
+
+def read_as_bytes(file_name):
+    """Read a non JSON file as bytes. Used in decryption and CHECKSUM."""
+    with open(file_name, "rb") as read_file:
+        file_data = read_file.read()
+
+    return file_data
 
 def return_credentials(filename, plaintext):
     """Upon successful CHECKSUM, offer the user to view or download the decrypted credentials.
     view prints the decrypted file using a dictionary, download keeps the decrypted json in the users dir."""
-    valid_json_string = json.loads(plaintext.decode("utf-8")) # loads the plaintext into string
-    write_json(filename, valid_json_string) # write string back to file using json dump
+    json_string = json.loads(plaintext.decode("utf-8")) # loads the plaintext into string
+    write_json(filename, json_string) # write string back to file which provides a py dictionay
     choice = input("Would you like to (v)iew or (d)ownload your credentials? ").strip().lower()
     while True:
         if choice == 'v':
@@ -201,7 +193,6 @@ def generate_id():
 def generate_encryption_key():
     """Generate an encryption key using the cryptography library (Fernet - an AES CBC MODE based cipher)."""
     key = Fernet.generate_key()
-    #print("Generated Key: ", key)
 
     return key
 
@@ -215,7 +206,6 @@ def user_application_form():
     creds = credentials.keys()
     for i in creds:
         print(f"{i.title()}: {credentials[i]}")
-
     while True:
         submit = input("Check your details are correct and (s)ubmit. Alternatively, (e)xit: ").lower().strip()
         if submit == 's':
@@ -234,16 +224,14 @@ def user_application_form():
     return unique_id
 
 def encryption(unique_id, key):
-    """Performs encryption on the user credentials using the generated key for the unique ID."""
-    # load file to bytes in order to encrypt data
-
-    # read the JSON file returning a string of bytes (read_as_bytes)
-    with open(unique_id+".json", "rb") as read_file:
-        file_data = read_file.read()
+    """Performs encryption on the user credentials JSON file using the generated key."""
+    file_data = open_json(unique_id) # open JSON file which provides a py dictionary
+    file_string = json.dumps(file_data) # convert the json dictionary python obj to python str
+    encoded_string = file_string.encode("utf-8") # encode the str obj to bytes
     
     f = Fernet(key) # to use the encryption key
         
-    encrypted_data = f.encrypt(file_data) # encrypt the credentials using the encryption key
+    encrypted_data = f.encrypt(encoded_string) # encrypt the credentials using the encryption key
     
     os.remove(unique_id+".json") # removes the credential file after encrypting
 
@@ -307,7 +295,6 @@ def create_user_management_table(connection):
         c.close()
     else:
         print("Cannot connect to the database...\n")
-        
 
 def insert_data(connection, encryption_key, cipher_hash, id_hash):
     """Insert data (encryption key, ciphertext hash and ID hash into the premised table."""
