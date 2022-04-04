@@ -7,6 +7,31 @@ from cryptography.fernet import Fernet # encryption (AES, CBC MODE)
 import boto3 # aws cloud storage
 import hashlib # hashing
 
+from stytch import Client
+
+def password_less_authentication():
+    # stytch credentials
+    client = Client(
+        project_id = "project-test-a9b602be-2e6b-4e4f-b3ff-47318a1c3315", 
+        secret = "secret-test-teGH7zGDwg9pH3-njSs7-x4HXhfkCrLFXQ4=",
+        environment = "test",
+    )
+    
+    email_address = input("Enter your email address to log-in: ")
+    resp = client.otps.email.login_or_create( # if user does not exist on stytch user management, an account will be created and a OTP will be sent
+        email = email_address
+    )
+    data = resp.json() # read response to JSON
+    method = data['email_id'] # access the email_id element to authenticate the request
+    
+    access = input("Enter your OTP: ")
+    resp = client.otps.authenticate(
+        method_id = method, # use the email_id as authentication of user
+        code = access # use the code entered by user to log-in to application
+    )
+    print(resp)
+    print("Successfully authenticated.")
+    
 def app_menu():
     """The main menu of the application. Gets input from a user to create, view or exit the application."""
     menu = {} # dictionary to hold selection with button
@@ -40,7 +65,7 @@ def add_record():
     id_hash = hashing(i.encode("utf-8")) # perform hashing for unique ID (must be encoded before hashing)
     aws_cloud_storage_upload(i, ct) # upload the encrypted credentials to the cloud using the unique ID as the filename
     conn = establish_connection() # establish connection with a premised database
-    create_user_management_table(conn) # create a user management table
+    user_management_table(conn) # create a user management table
     insert_data(conn, k, ct_hash, id_hash) # insert enc key, cipher has and ID hash into table (will check if already exists)
     
     # TODO (1) appropriate password-less authentication to gain access to app
@@ -128,7 +153,6 @@ def checksum(file_name):
     # generate hash for downloaded file
     user_hash = hashing(file_data) # call the hashing function on the encoded ciphertext via cloud storage
 
-    ## this should be used as the checksum isntead
     param = user_hash.hexdigest() # get str of user_hash
     results = c.execute("SELECT * FROM keys WHERE cipher_hash = ?", [param]) # search for matching hash
     if results is None:
@@ -211,8 +235,7 @@ def user_application_form():
         if submit == 's':
             unique_id = generate_id() # generate a unique id
             # write the credentials (python dictionary) to JSON file
-            with open(unique_id+".json", "w") as data:
-                json.dump(credentials, data) # save the dictionary credentials to a JSON file with the ID num as name
+            write_json(unique_id, credentials)
             break
         elif submit == 'e':
             print("Exiting...")
@@ -284,7 +307,7 @@ def establish_connection():
         print(e)
     return connection
 
-def create_user_management_table(connection):
+def user_management_table(connection):
     """Create a table on local storage. This will only need to be done once."""
     if connection is not None:
         c = connection.cursor()
@@ -309,6 +332,7 @@ def insert_data(connection, encryption_key, cipher_hash, id_hash):
         print("Cannot connect to the database...")
     
 def main():
+    #password_less_authentication()
     app_menu() # start menu
     
 if __name__ == '__main__':
