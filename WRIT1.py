@@ -240,11 +240,14 @@ def credential_check(unique_id):
 def aws_cloud_storage_download(file_name):
     """Downloads student credentials from AWS cloud storage bucket."""
     s3, bucket_name = aws_cloud_storage_connect() # establish connection to AWS cloud storage
-    
-    s3.download_file(bucket_name, file_name, file_name) # download the file from the relevant bucket and using the filename as a search
-    print("\nDownloading...")
-
-    print("Download successful!...\n")
+    try:
+        s3.download_file(bucket_name, file_name, file_name) # download the file from the relevant bucket and using the filename as a search
+    except IOError:
+        print("File not found")
+    else:
+        print("\nDownloading...")
+        
+        print("Download successful!...\n")
     
 
 def decryption(unique_id, key):
@@ -287,8 +290,8 @@ def return_credentials(file_name, plaintext):
     view prints the decrypted file using a dictionary, download keeps the decrypted json in the users dir."""
     json_string = json.loads(plaintext.decode("utf-8")) # loads the plaintext into string
     write_json(file_name, json_string) # write string back to file which provides a py dictionary
-    choice = input("Would you like to (v)iew or (d)ownload your credentials? ").strip().lower() # ensure user input is stripped of whitespace and lowercase
     while True:
+        choice = input("Would you like to (v)iew or (d)ownload your credentials? ").strip().lower() # ensure user input is stripped of whitespace and lowercase
         if choice == 'v':
             credentials = open_json(file_name) # open JSON file downloaded from AWS
             print("First_Name:", credentials['first_name'])
@@ -302,7 +305,6 @@ def return_credentials(file_name, plaintext):
             break
         else:
             print("Incorrect input")
-            continue
 
     
 def establish_connection():
