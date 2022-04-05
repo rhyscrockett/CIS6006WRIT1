@@ -17,7 +17,7 @@ def password_less_authentication():
         environment = "test",
     )
     
-    email_address = input("Enter your email address to log-in: ")
+    email_address = input("Please enter your email address to gain access to the student portal: ")
     resp = client.otps.email.login_or_create( # if user does not exist on stytch user management, an account will be created and a OTP will be sent
         email = email_address
     )
@@ -224,6 +224,7 @@ def credential_check(unique_id):
         print("User does not exist")
         sys.exit(1)
     else: # if id hash matches student input, retrieve the ciphertext from cloud
+        print("Hash values match!...\n")
         aws_cloud_storage_download(unique_id) # run download function
 
     # retrieve encryption key associated with unique ID if hash match
@@ -304,7 +305,7 @@ def return_credentials(file_name, plaintext):
             print("Saving decrypted file to current directory...") # exit without deleting document
             break
         else:
-            print("Incorrect input")
+            print("Incorrect input...")
 
     
 def establish_connection():
